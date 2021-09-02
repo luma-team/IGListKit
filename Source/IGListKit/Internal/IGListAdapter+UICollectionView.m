@@ -18,6 +18,12 @@
 
 #import "IGListAdapterInternal.h"
 
+@interface IGListAdapter ()
+
+@property (nonatomic, strong) NSMapTable *configurationToSectionController;
+
+@end
+
 @implementation IGListAdapter (UICollectionView)
 
 #pragma mark - UICollectionViewDataSource
@@ -278,7 +284,35 @@
     }
 
     IGListSectionController * sectionController = [self sectionControllerForSection:indexPath.section];
-    return [sectionController contextMenuConfigurationForItemAtIndex:indexPath.item point:point];
+    
+    UIContextMenuConfiguration *configuration = [sectionController contextMenuConfigurationForItemAtIndex:indexPath.item point:point];
+    if (configuration) {
+        if (!self.configurationToSectionController) {
+            self.configurationToSectionController = [NSMapTable weakToWeakObjectsMapTable];
+        }
+        [self.configurationToSectionController setObject:configuration forKey:sectionController];
+    }
+    return nil;
+}
+
+- (UITargetedPreview *)collectionView:(UICollectionView *)collectionView previewForHighlightingContextMenuWithConfiguration:(UIContextMenuConfiguration *)configuration  API_AVAILABLE(ios(13.0)){
+    id<UICollectionViewDelegate> collectionViewDelegate = self.collectionViewDelegate;
+    if ([collectionViewDelegate respondsToSelector:@selector(collectionView:previewForHighlightingContextMenuWithConfiguration:)]) {
+        return [collectionViewDelegate collectionView:collectionView previewForHighlightingContextMenuWithConfiguration:configuration];
+    }
+    
+    IGListSectionController * sectionController = [self.configurationToSectionController objectForKey:configuration];
+    return [sectionController previewForHighlightingContextMenuWithConfiguration:configuration];
+}
+
+- (UITargetedPreview *)collectionView:(UICollectionView *)collectionView previewForDismissingContextMenuWithConfiguration:(UIContextMenuConfiguration *)configuration  API_AVAILABLE(ios(13.0)){
+    id<UICollectionViewDelegate> collectionViewDelegate = self.collectionViewDelegate;
+    if ([collectionViewDelegate respondsToSelector:@selector(collectionView:previewForDismissingContextMenuWithConfiguration:)]) {
+        return [collectionViewDelegate collectionView:collectionView previewForDismissingContextMenuWithConfiguration:configuration];
+    }
+    
+    IGListSectionController * sectionController = [self.configurationToSectionController objectForKey:configuration];
+    return [sectionController previewForDismissingContextMenuWithConfiguration:configuration];
 }
 #endif
 

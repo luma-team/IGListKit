@@ -101,6 +101,14 @@ void IGListSectionControllerPopThread(void) {
     return nil;
 }
 
+- (UITargetedPreview * _Nullable)previewForHighlightingContextMenuWithConfiguration:(UIContextMenuConfiguration *)configuration {
+    return nil;
+}
+
+- (UITargetedPreview * _Nullable)previewForDismissingContextMenuWithConfiguration:(UIContextMenuConfiguration *)configuration {
+    return nil;
+}
+
 - (BOOL)canMoveItemAtIndex:(NSInteger)index {
     return NO;
 }

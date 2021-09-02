@@ -133,6 +133,28 @@ NS_SWIFT_NAME(ListSectionController)
 - (UIContextMenuConfiguration * _Nullable)contextMenuConfigurationForItemAtIndex:(NSInteger)index point:(CGPoint)point API_AVAILABLE(ios(13.0)) API_UNAVAILABLE(tvos);
 
 /**
+ Tells the section controller that the cell has requested a preview for context menu highlight.
+ 
+ @param configuration Context menu configuration.
+ 
+ @return An object that conforms to `UITargetedPreview`
+ 
+ @note The default implementation does nothing. **Calling super is not required.**
+ */
+- (UITargetedPreview * _Nullable)previewForHighlightingContextMenuWithConfiguration:(UIContextMenuConfiguration *)configuration API_AVAILABLE(ios(13.0)) API_UNAVAILABLE(tvos);
+
+/**
+ Tells the section controller that the cell has requested a preview for context menu dismiss.
+ 
+ @param configuration Context menu configuration.
+ 
+ @return An object that conforms to `UITargetedPreview`
+ 
+ @note The default implementation does nothing. **Calling super is not required.**
+ */
+- (UITargetedPreview * _Nullable)previewForDismissingContextMenuWithConfiguration:(UIContextMenuConfiguration *)configuration API_AVAILABLE(ios(13.0)) API_UNAVAILABLE(tvos);
+
+/**
  Identifies whether an object can be moved through interactive reordering.
 
  @param index The index of the object in the list.
