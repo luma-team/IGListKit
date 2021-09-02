@@ -154,10 +154,4 @@ typedef NS_ENUM(NSInteger, IGListDiffingSectionState) {
     [self.selectionDelegate sectionController:self didUnhighlightItemAtIndex:index viewModel:self.viewModels[index]];
 }
 
-#if !TARGET_OS_TV
-- (UIContextMenuConfiguration * _Nullable)contextMenuConfigurationForItemAtIndex:(NSInteger)index point:(CGPoint)point {
-    return [self.selectionDelegate sectionController:self contextMenuConfigurationForItemAtIndex:index point:point viewModel:self.viewModels[index]];
-}
-#endif
-
 @end
