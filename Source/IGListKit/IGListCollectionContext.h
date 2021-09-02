@@ -7,9 +7,13 @@
 
 #import <UIKit/UIKit.h>
 
+#if !__has_include(<IGListDiffKit/IGListDiffKit.h>)
+#import "IGListExperiments.h"
+#else
 #import <IGListDiffKit/IGListExperiments.h>
-#import <IGListKit/IGListBatchContext.h>
-#import <IGListKit/IGListCollectionScrollingTraits.h>
+#endif
+#import "IGListBatchContext.h"
+#import "IGListCollectionScrollingTraits.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -41,6 +45,11 @@ NS_SWIFT_NAME(ListCollectionContext)
  The size of the collection view with content insets applied.
  */
 @property (nonatomic, readonly) CGSize insetContainerSize;
+
+/**
+ The content offset of the collection view.
+ */
+@property (nonatomic, readonly) CGPoint containerContentOffset;
 
 /**
  The current scrolling traits of the underlying collection view.
@@ -84,6 +93,15 @@ NS_SWIFT_NAME(ListCollectionContext)
  */
 - (nullable __kindof UICollectionViewCell *)cellForItemAtIndex:(NSInteger)index
                                              sectionController:(IGListSectionController *)sectionController;
+
+/**
+ Returns the fully visible cells for the given section controller.
+
+ @param sectionController The section controller requesting this information.
+
+ @return An array of fully visible cells, or an empty array if none are found.
+ */
+- (NSArray<UICollectionViewCell *> *)fullyVisibleCellsForSectionController:(IGListSectionController *)sectionController;
 
 /**
  Returns the visible cells for the given section controller.
@@ -169,7 +187,7 @@ NS_SWIFT_NAME(ListCollectionContext)
 
  @return A cell dequeued from the reuse pool or a newly created one.
 
- @note This method uses a string representation of the cell class as the identifier.
+ @note This method uses the nib name as the reuse identifier.
  */
 - (__kindof UICollectionViewCell *)dequeueReusableCellWithNibName:(NSString *)nibName
                                                            bundle:(nullable NSBundle *)bundle
@@ -199,7 +217,7 @@ NS_SWIFT_NAME(ListCollectionContext)
 
  @return A supplementary view dequeued from the reuse pool or a newly created one.
 
- @note This method uses a string representation of the view class as the identifier.
+ @note This method uses a string representation of the view class and the kind as the identifier.
  */
 - (__kindof UICollectionReusableView *)dequeueReusableSupplementaryViewOfKind:(NSString *)elementKind
                                                          forSectionController:(IGListSectionController *)sectionController
@@ -231,7 +249,7 @@ NS_SWIFT_NAME(ListCollectionContext)
 
  @return A supplementary view dequeued from the reuse pool or a newly created one.
 
- @note This method uses a string representation of the view class as the identifier.
+ @note This method uses the nib name as the reuse identifier.
  */
 - (__kindof UICollectionReusableView *)dequeueReusableSupplementaryViewOfKind:(NSString *)elementKind
                                                          forSectionController:(IGListSectionController *)sectionController

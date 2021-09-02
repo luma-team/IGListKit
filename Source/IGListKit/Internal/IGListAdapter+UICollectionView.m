@@ -7,20 +7,29 @@
 
 #import "IGListAdapter+UICollectionView.h"
 
+#if !__has_include(<IGListDiffKit/IGListDiffKit.h>)
+#import "IGListAssert.h"
+#else
 #import <IGListDiffKit/IGListAssert.h>
-#import <IGListKit/IGListAdapterInternal.h>
-#import <IGListKit/IGListSectionController.h>
-#import <IGListKit/IGListSectionControllerInternal.h>
+#endif
+#import "IGListAdapterInternal.h"
+#import "IGListSectionController.h"
+#import "IGListSectionControllerInternal.h"
+
+#import "IGListAdapterInternal.h"
 
 @implementation IGListAdapter (UICollectionView)
 
 #pragma mark - UICollectionViewDataSource
 
 - (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
+    _assertNotInMiddleOfObjectUpdate(self.isInObjectUpdateTransaction);
     return self.sectionMap.objects.count;
 }
 
 - (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    _assertNotInMiddleOfObjectUpdate(self.isInObjectUpdateTransaction);
+
     IGListSectionController * sectionController = [self sectionControllerForSection:section];
     IGAssert(sectionController != nil, @"Nil section controller for section %li for item %@. Check your -diffIdentifier and -isEqual: implementations.",
              (long)section, [self.sectionMap objectForSection:section]);
@@ -113,6 +122,11 @@
 
 #pragma mark - UICollectionViewDelegate
 
+- (BOOL)collectionView:(UICollectionView *)collectionView shouldSelectItemAtIndexPath:(NSIndexPath *)indexPath {
+    IGListSectionController * sectionController = [self sectionControllerForSection:indexPath.section];
+    return [sectionController shouldSelectItemAtIndex:indexPath.item];
+}
+
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     // forward this method to the delegate b/c this implementation will steal the message from the proxy
     id<UICollectionViewDelegate> collectionViewDelegate = self.collectionViewDelegate;
@@ -145,12 +159,17 @@
         [collectionViewDelegate collectionView:collectionView willDisplayCell:cell forItemAtIndexPath:indexPath];
     }
 
-    IGListSectionController *sectionController = [self sectionControllerForView:cell];
-    // if the section controller relationship was destroyed, reconnect it
-    // this happens with iOS 10 UICollectionView display range changes
-    if (sectionController == nil) {
+    IGListSectionController *sectionController;
+    if (IGListExperimentEnabled(self.experiments, IGListExperimentSkipViewSectionControllerMap)) {
         sectionController = [self sectionControllerForSection:indexPath.section];
-        [self mapView:cell toSectionController:sectionController];
+    } else {
+        sectionController = [self sectionControllerForView:cell];
+        // if the section controller relationship was destroyed, reconnect it
+        // this happens with iOS 10 UICollectionView display range changes
+        if (sectionController == nil) {
+            sectionController = [self sectionControllerForSection:indexPath.section];
+            [self mapView:cell toSectionController:sectionController];
+        }
     }
 
     id object = [self.sectionMap objectForSection:indexPath.section];
@@ -173,7 +192,12 @@
         [collectionViewDelegate collectionView:collectionView didEndDisplayingCell:cell forItemAtIndexPath:indexPath];
     }
 
-    IGListSectionController *sectionController = [self sectionControllerForView:cell];
+    IGListSectionController *sectionController;
+    if (IGListExperimentEnabled(self.experiments, IGListExperimentSkipViewSectionControllerMap)) {
+        sectionController = [self sectionControllerForSection:indexPath.section];
+    } else {
+        sectionController = [self sectionControllerForView:cell];
+    }
     [self.displayHandler didEndDisplayingCell:cell forListAdapter:self sectionController:sectionController indexPath:indexPath];
     [self.workingRangeHandler didEndDisplayingItemAtIndexPath:indexPath forListAdapter:self];
 
@@ -189,12 +213,17 @@
         [collectionViewDelegate collectionView:collectionView willDisplaySupplementaryView:view forElementKind:elementKind atIndexPath:indexPath];
     }
 
-    IGListSectionController *sectionController = [self sectionControllerForView:view];
-    // if the section controller relationship was destroyed, reconnect it
-    // this happens with iOS 10 UICollectionView display range changes
-    if (sectionController == nil) {
-        sectionController = [self.sectionMap sectionControllerForSection:indexPath.section];
-        [self mapView:view toSectionController:sectionController];
+    IGListSectionController *sectionController;
+    if (IGListExperimentEnabled(self.experiments, IGListExperimentSkipViewSectionControllerMap)) {
+        sectionController = [self sectionControllerForSection:indexPath.section];
+    } else {
+        sectionController = [self sectionControllerForView:view];
+        // if the section controller relationship was destroyed, reconnect it
+        // this happens with iOS 10 UICollectionView display range changes
+        if (sectionController == nil) {
+            sectionController = [self sectionControllerForSection:indexPath.section];
+            [self mapView:view toSectionController:sectionController];
+        }
     }
 
     id object = [self.sectionMap objectForSection:indexPath.section];
@@ -207,7 +236,12 @@
         [collectionViewDelegate collectionView:collectionView didEndDisplayingSupplementaryView:view forElementOfKind:elementKind atIndexPath:indexPath];
     }
 
-    IGListSectionController *sectionController = [self sectionControllerForView:view];
+    IGListSectionController *sectionController;
+    if (IGListExperimentEnabled(self.experiments, IGListExperimentSkipViewSectionControllerMap)) {
+        sectionController = [self sectionControllerForSection:indexPath.section];
+    } else {
+        sectionController = [self sectionControllerForView:view];
+    }
     [self.displayHandler didEndDisplayingSupplementaryView:view forListAdapter:self sectionController:sectionController indexPath:indexPath];
 
     [self removeMapForView:view];
@@ -315,6 +349,12 @@
                                                          atIndex:indexPath.item];
     }
     return attributes;
+}
+
+#pragma mark - Assert helpers
+
+static void _assertNotInMiddleOfObjectUpdate(BOOL isInObjectUpdateTransaction) {
+    IGAssert(isInObjectUpdateTransaction == NO, @"The UICollectionView is attempting to update its data while the IGListAdapter is in a middle of updating the object list. This will cause inconsistencies and potentially crashes (which are hard to debug). The most common cause is a section controller tries to access/modify the UICollectionView in -didUpdateToObject.");
 }
 
 @end

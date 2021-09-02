@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2014-2016 Erik Doernenburg and contributors
+ *  Copyright (c) 2014-2020 Erik Doernenburg and contributors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may
  *  not use these files except in compliance with the License. You may obtain
@@ -15,10 +15,13 @@
  */
 
 #import <objc/runtime.h>
+#if !TARGET_OS_WATCH
+#import <XCTest/XCTest.h>
+#endif
 #import "OCMFunctionsPrivate.h"
-#import "OCMLocation.h"
 #import "OCClassMockObject.h"
 #import "OCPartialMockObject.h"
+#import "OCMLocation.h"
 
 
 #pragma mark  Known private API
@@ -48,15 +51,10 @@ static BOOL OCMIsUnqualifiedClassType(const char *unqualifiedObjCType)
     return (strcmp(unqualifiedObjCType, @encode(Class)) == 0);
 }
 
-BOOL OCMIsClassType(const char *objCType)
-{
-    return OCMIsUnqualifiedClassType(OCMTypeWithoutQualifiers(objCType));
-}
-
 
 static BOOL OCMIsUnqualifiedBlockType(const char *unqualifiedObjCType)
 {
-    char blockType[] = @encode(void(^)());
+    char blockType[] = @encode(void(^)(void));
     if(strcmp(unqualifiedObjCType, blockType) == 0)
         return YES;
 
@@ -65,6 +63,11 @@ static BOOL OCMIsUnqualifiedBlockType(const char *unqualifiedObjCType)
         return YES;
 
     return NO;
+}
+
+BOOL OCMIsClassType(const char *objCType)
+{
+    return OCMIsUnqualifiedClassType(OCMTypeWithoutQualifiers(objCType));
 }
 
 BOOL OCMIsBlockType(const char *objCType)
@@ -118,6 +121,57 @@ CFNumberType OCMNumberTypeForObjCType(const char *objcType)
     }
 }
 
+
+static BOOL ParseStructType(const char *type, const char **typeEnd, const char **typeNameEnd, const char **typeEqualSign)
+{
+    if (type[0] != '{' && type[0] != '(')
+        return NO;
+
+    *typeNameEnd = NULL;
+    *typeEqualSign = NULL;
+
+    const char endChar = type[0] == '{' ? '}' : ')';
+    for (const char* ptr = type + 1; *ptr; ++ptr) {
+        switch (*ptr) {
+            case '(':
+            case '{':
+            {
+                const char *subTypeEnd;
+                const char *subTypeNameEnd;
+                const char *subTypeEqualSign;
+                if (!ParseStructType(ptr, &subTypeEnd, &subTypeNameEnd, &subTypeEqualSign))
+                    return NO;
+                ptr = subTypeEnd;
+                break;
+            }
+            case '=':
+            {
+                if (!*typeEqualSign) {
+                    *typeNameEnd = ptr;
+                    *typeEqualSign = ptr;
+                }
+                break;
+            }
+            case ')':
+            case '}':
+            {
+                if (*ptr == endChar) {
+                    *typeEnd = ptr;
+                    if (!*typeNameEnd)
+                        *typeNameEnd = ptr;
+                    return YES;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return NO;
+}
+
+
 /*
  * Sometimes an external type is an opaque struct (which will have an @encode of "{structName}"
  * or "{structName=}") but the actual method return type, or property type, will know the contents
@@ -145,27 +199,32 @@ static BOOL OCMEqualTypesAllowingOpaqueStructsInternal(const char *type1, const 
         {
             if (type2[0] != type1[0])
                 return NO;
-            char endChar = type1[0] == '{'? '}' : ')';
 
-            const char *type1End = strchr(type1, endChar);
-            const char *type2End = strchr(type2, endChar);
-            const char *type1Equals = strchr(type1, '=');
-            const char *type2Equals = strchr(type2, '=');
+            const char *type1End;
+            const char *type1NameEnd;
+            const char *type1EqualSign;
+            if (!ParseStructType(type1, &type1End, &type1NameEnd, &type1EqualSign))
+                return NO;
+
+            const char *type2End;
+            const char *type2NameEnd;
+            const char *type2EqualSign;
+            if (!ParseStructType(type2, &type2End, &type2NameEnd, &type2EqualSign))
+                return NO;
 
             /* Opaque types either don't have an equals sign (just the name and the end brace), or
              * empty content after the equals sign.
              * We want that to compare the same as a type of the same name but with the content.
              */
-            BOOL type1Opaque = (type1Equals == NULL || (type1End < type1Equals) || type1Equals[1] == endChar);
-            BOOL type2Opaque = (type2Equals == NULL || (type2End < type2Equals) || type2Equals[1] == endChar);
-            const char *type1NameEnd = (type1Equals == NULL || (type1End < type1Equals)) ? type1End : type1Equals;
-            const char *type2NameEnd = (type2Equals == NULL || (type2End < type2Equals)) ? type2End : type2Equals;
+            BOOL type1Opaque = (type1EqualSign == NULL || type1EqualSign + 1 == type1End);
+            BOOL type2Opaque = (type2EqualSign == NULL || type2EqualSign + 2 == type2End);
             intptr_t type1NameLen = type1NameEnd - type1;
             intptr_t type2NameLen = type2NameEnd - type2;
 
             /* If the names are not equal and neither of the names is a question mark, return NO */
             if ((type1NameLen != type2NameLen || strncmp(type1, type2, type1NameLen)) &&
-                !((type1NameLen == 2) && (type1[1] == '?')) && !((type2NameLen == 2) && (type2[1] == '?')))
+                    !((type1NameLen == 2) && (type1[1] == '?')) && !((type2NameLen == 2) && (type2[1] == '?')) &&
+                    !(type1NameLen == 1 || type2NameLen == 1))
                 return NO;
 
             /* If the same name, and at least one is opaque, that is close enough. */
@@ -173,14 +232,32 @@ static BOOL OCMEqualTypesAllowingOpaqueStructsInternal(const char *type1, const 
                 return YES;
 
             /* Otherwise, compare all the elements.  Use NSGetSizeAndAlignment to walk through the struct elements. */
-            type1 = type1Equals + 1;
-            type2 = type2Equals + 1;
-            while (type1[0] != endChar && type1[0] != '\0')
+            type1 = type1EqualSign + 1;
+            type2 = type2EqualSign + 1;
+            while (type1 != type1End && *type1)
             {
                 if (!OCMEqualTypesAllowingOpaqueStructs(type1, type2))
                     return NO;
-                type1 = NSGetSizeAndAlignment(type1, NULL, NULL);
-                type2 = NSGetSizeAndAlignment(type2, NULL, NULL);
+
+                if (*type1 != '{' && *type1 != '(') {
+                    type1 = NSGetSizeAndAlignment(type1, NULL, NULL);
+                    type2 = NSGetSizeAndAlignment(type2, NULL, NULL);
+                } else {
+                    const char *subType1End;
+                    const char *subType1NameEnd;
+                    const char *subType1EqualSign;
+                    if (!ParseStructType(type1, &subType1End, &subType1NameEnd, &subType1EqualSign))
+                        return NO;
+
+                    const char *subType2End;
+                    const char *subType2NameEnd;
+                    const char *subType2EqualSign;
+                    if (!ParseStructType(type2, &subType2End, &subType2NameEnd, &subType2EqualSign))
+                        return NO;
+
+                    type1 = subType1End + 1;
+                    type2 = subType2End + 1;
+                }
             }
             return YES;
         }
@@ -222,15 +299,96 @@ BOOL OCMEqualTypesAllowingOpaqueStructs(const char *type1, const char *type2)
     }
 }
 
+BOOL OCMIsNilValue(const char *objectCType, const void *value, size_t valueSize)
+{
+    // First, check value itself
+    for(size_t i = 0; i < valueSize; i++)
+        if(((const char *)value)[i] != 0)
+            return NO;
 
-#pragma mark  Creating classes
+    // Depending on the compilation settings of the file where the return value gets recorded,
+    // nil and Nil get potentially different encodings. Check all known encodings.
+    if((strcmp(objectCType, @encode(void *))    == 0) ||    // Standard Objective-C
+       (strcmp(objectCType, @encode(int))       == 0) ||    // 32 bit C++ (before nullptr)
+       (strcmp(objectCType, @encode(long long)) == 0) ||    // 64 bit C++ (before nullptr)
+       (strcmp(objectCType, @encode(char *))    == 0))      // C++ with nullptr
+        return YES;
+
+    return NO;
+}
+
+
+BOOL OCMIsAppleBaseClass(Class cls)
+{
+    return (cls == [NSObject class]) || (cls == [NSProxy class]);
+}
+
+BOOL OCMIsApplePrivateMethod(Class cls, SEL sel)
+{
+    NSString *className = NSStringFromClass(cls);
+    NSString *selName = NSStringFromSelector(sel);
+    return ([className hasPrefix:@"NS"] || [className hasPrefix:@"UI"]) &&
+            ([selName hasPrefix:@"_"] || [selName hasSuffix:@"_"]);
+}
+
+BOOL OCMIsBlock(id potentialBlock)
+{
+    static Class blockClass;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        blockClass = [^{} class];
+        Class nsObjectClass = [NSObject class];
+        while([blockClass superclass] != nsObjectClass)
+        {
+            blockClass = [blockClass superclass];
+            NSCAssert(blockClass != nil, @"Blocks are expected to inherit from NSObject.");
+        }
+    });
+    return [potentialBlock isKindOfClass:blockClass];
+}
+
+BOOL OCMIsNonEscapingBlock(id block)
+{
+    struct OCMBlockDef *blockRef = (__bridge struct OCMBlockDef *)block;
+    return OCMIsBlock(block) && (blockRef->flags & OCMBlockIsNoEscape) != 0;
+}
+
+
+#pragma mark  Creating and disposing classes
+
+static NSString *const OCMSubclassPrefix = @"OCMock_";
 
 Class OCMCreateSubclass(Class class, void *ref)
 {
-    const char *className = [[NSString stringWithFormat:@"%@-%p-%u", NSStringFromClass(class), ref, arc4random()] UTF8String];
+    const char *className = [[NSString stringWithFormat:@"%@%@-%p-%u", OCMSubclassPrefix, NSStringFromClass(class), ref, arc4random()] UTF8String];
     Class subclass = objc_allocateClassPair(class, className, 0);
     objc_registerClassPair(subclass);
     return subclass;
+}
+
+void OCMDisposeSubclass(Class cls)
+{
+    if(!OCMIsMockSubclass(cls))
+    {
+        [NSException raise:NSInvalidArgumentException format:@"Not a mock subclass; found %@\nThe subclass dynamically created by OCMock has been replaced by another class. This can happen when KVO or CoreData create their own dynamic subclass after OCMock created its subclass.\nYou will need to reorder initialization and/or teardown so that classes are created and disposed of in the right order.", NSStringFromClass(cls)];
+    }
+    objc_disposeClassPair(cls);
+}
+
+BOOL OCMIsMockSubclass(Class cls)
+{
+    return [NSStringFromClass(cls) hasPrefix:OCMSubclassPrefix];
+}
+
+BOOL OCMIsSubclassOfMockClass(Class cls)
+{
+    for(; cls != nil; cls = class_getSuperclass(cls))
+    {
+        if(OCMIsMockSubclass(cls))
+            return YES;
+    }
+    return NO;
 }
 
 
@@ -305,7 +463,20 @@ OCPartialMockObject *OCMGetAssociatedMockForObject(id anObject)
 void OCMReportFailure(OCMLocation *loc, NSString *description)
 {
     id testCase = [loc testCase];
-    if((testCase != nil) && [testCase respondsToSelector:@selector(recordFailureWithDescription:inFile:atLine:expected:)])
+#ifdef __IPHONE_14_0    // this is actually a test for Xcode 12; see issue #472
+#if !TARGET_OS_WATCH
+    if((testCase != nil) && [testCase respondsToSelector:@selector(recordIssue:)])
+    {
+        XCTSourceCodeLocation *xctloc = [[[XCTSourceCodeLocation alloc] initWithFilePath:[loc file] lineNumber:[loc line]] autorelease];
+        XCTSourceCodeContext *xctctx = [[[XCTSourceCodeContext alloc] initWithLocation:xctloc] autorelease];
+        XCTIssue *issue = [[[XCTIssue alloc] initWithType:XCTIssueTypeAssertionFailure compactDescription:description
+                detailedDescription:nil sourceCodeContext:xctctx associatedError:nil attachments:[NSArray array]] autorelease];
+        [testCase recordIssue:issue];
+    }
+    else
+#endif
+#endif
+         if((testCase != nil) && [testCase respondsToSelector:@selector(recordFailureWithDescription:inFile:atLine:expected:)])
     {
         [testCase recordFailureWithDescription:description inFile:[loc file] atLine:[loc line] expected:NO];
     }

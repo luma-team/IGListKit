@@ -7,12 +7,12 @@
 
 #import <UIKit/UIKit.h>
 
-#import <IGListKit/IGListCollectionContext.h>
-#import <IGListKit/IGListDisplayDelegate.h>
-#import <IGListKit/IGListScrollDelegate.h>
-#import <IGListKit/IGListSupplementaryViewSource.h>
-#import <IGListKit/IGListTransitionDelegate.h>
-#import <IGListKit/IGListWorkingRangeDelegate.h>
+#import "IGListCollectionContext.h"
+#import "IGListDisplayDelegate.h"
+#import "IGListScrollDelegate.h"
+#import "IGListSupplementaryViewSource.h"
+#import "IGListTransitionDelegate.h"
+#import "IGListWorkingRangeDelegate.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -74,6 +74,15 @@ NS_SWIFT_NAME(ListSectionController)
  object. **Calling super is not required.**
  */
 - (void)didUpdateToObject:(id)object;
+
+/**
+ Asks the section controller if the cell at the specified index path should be selected
+
+ @param index The index of cell to be selected.
+
+ @note The default implementation returns YES. **Calling super is not required.**
+ */
+- (BOOL)shouldSelectItemAtIndex:(NSInteger)index;
 
 /**
  Tells the section controller that the cell at the specified index path was selected.
@@ -159,8 +168,13 @@ NS_SWIFT_NAME(ListSectionController)
  A context object for interacting with the collection.
 
  Use this property for accessing the collection size, dequeuing cells, reloading, inserting, deleting, etc.
+
+ @note When created outside of `-listAdapter:sectionControllerForObject:`, this object is temporarily `nil`
+ after initialization. We bridge it to Swift as an implicitly-unwrapped Optional, so that idiomatic IGListKit
+ code is not forced to handle nullability with explicit `as!` or `fatalError`, as using a non-`nil` instance
+ of this object is essential for dequeueing cells.
  */
-@property (nonatomic, weak, nullable, readonly) id <IGListCollectionContext> collectionContext;
+@property (nonatomic, weak, null_unspecified, readonly) id <IGListCollectionContext> collectionContext;
 
 /**
  Returns the section within the list for this section controller.

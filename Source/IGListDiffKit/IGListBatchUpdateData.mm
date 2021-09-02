@@ -9,8 +9,13 @@
 
 #import <unordered_map>
 
+#if !__has_include(<IGListDiffKit/IGListDiffKit.h>)
+#import "IGListAssert.h"
+#else
 #import <IGListDiffKit/IGListAssert.h>
-#import <IGListDiffKit/IGListCompatibility.h>
+#endif
+
+#import "IGListCompatibility.h"
 
 // Plucks the given move from available moves and turns it into a delete + insert
 static void convertMoveToDeleteAndInsert(NSMutableSet<IGListMoveIndex *> *moves,
@@ -43,23 +48,6 @@ static void convertMoveToDeleteAndInsert(NSMutableSet<IGListMoveIndex *> *moves,
     }
 }
 
-- (instancetype)initWithInsertSections:(NSIndexSet *)insertSections
-                        deleteSections:(NSIndexSet *)deleteSections
-                          moveSections:(NSSet<IGListMoveIndex *> *)moveSections
-                      insertIndexPaths:(NSArray<NSIndexPath *> *)insertIndexPaths
-                      deleteIndexPaths:(NSArray<NSIndexPath *> *)deleteIndexPaths
-                      updateIndexPaths:(NSArray<NSIndexPath *> *)updateIndexPaths
-                        moveIndexPaths:(NSArray<IGListMoveIndexPath *> *)moveIndexPaths {
-    return [self initWithInsertSections:insertSections
-                         deleteSections:deleteSections
-                           moveSections:moveSections
-                       insertIndexPaths:insertIndexPaths
-                       deleteIndexPaths:deleteIndexPaths
-                       updateIndexPaths:updateIndexPaths
-                         moveIndexPaths:moveIndexPaths
-                  fixIndexPathImbalance:NO];
-}
-
 /**
  Converts all section moves that are also reloaded, or have index path inserts, deletes, or reloads into a section
  delete + insert in order to avoid UICollectionView heap corruptions, exceptions, and animation/snapshot bugs.
@@ -70,8 +58,7 @@ static void convertMoveToDeleteAndInsert(NSMutableSet<IGListMoveIndex *> *moves,
                       insertIndexPaths:(nonnull NSArray<NSIndexPath *> *)insertIndexPaths
                       deleteIndexPaths:(nonnull NSArray<NSIndexPath *> *)deleteIndexPaths
                       updateIndexPaths:(nonnull NSArray<NSIndexPath *> *)updateIndexPaths
-                        moveIndexPaths:(nonnull NSArray<IGListMoveIndexPath *> *)moveIndexPaths
-                 fixIndexPathImbalance:(BOOL)fixIndexPathImbalance {
+                        moveIndexPaths:(nonnull NSArray<IGListMoveIndexPath *> *)moveIndexPaths {
     IGParameterAssert(insertSections != nil);
     IGParameterAssert(deleteSections != nil);
     IGParameterAssert(moveSections != nil);
@@ -109,16 +96,7 @@ static void convertMoveToDeleteAndInsert(NSMutableSet<IGListMoveIndex *> *moves,
         // avoid a flaky UICollectionView bug when deleting from the same index path twice
         // exposes a possible data source inconsistency issue
         NSMutableArray<NSIndexPath *> *mDeleteIndexPaths = [[[NSSet setWithArray:deleteIndexPaths] allObjects] mutableCopy];
-
-        NSMutableArray<NSIndexPath *> *mInsertIndexPaths;
-        if (fixIndexPathImbalance) {
-            // Since we remove duplicate deletes (see above) we also need to remove inserts to keep the same insert/delete
-            // balance. For example, if we reload (insert & delete) the same NSIndexPath twice, we would otherwise end up
-            // with 2 inserts and 1 delete.
-            mInsertIndexPaths = [[[NSSet setWithArray:insertIndexPaths] allObjects] mutableCopy];
-        } else {
-            mInsertIndexPaths = [insertIndexPaths mutableCopy];
-        }
+        NSMutableArray<NSIndexPath *> *mInsertIndexPaths = [insertIndexPaths mutableCopy];
 
         // avoids a bug where a cell is animated twice and one of the snapshot cells is never removed from the hierarchy
         [IGListBatchUpdateData _cleanIndexPathsWithMap:fromMap moves:mMoveSections indexPaths:mDeleteIndexPaths deletes:mDeleteSections inserts:mInsertSections];

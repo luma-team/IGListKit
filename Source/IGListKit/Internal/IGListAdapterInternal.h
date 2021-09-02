@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#import <IGListKit/IGListAdapter.h>
-#import <IGListKit/IGListBatchContext.h>
-#import <IGListKit/IGListCollectionContext.h>
+#import "IGListAdapter.h"
+#import "IGListBatchContext.h"
+#import "IGListCollectionContext.h"
 
 #import "IGListAdapter+UICollectionView.h"
 #import "IGListAdapterProxy.h"
@@ -43,8 +43,11 @@ IGListBatchContext
 
 @property (nonatomic, strong, nullable) UIView *emptyBackgroundView;
 
-// we need to special case interactive section moves that are moved to the last position
+// We need to special case interactive section moves that are moved to the last position
 @property (nonatomic) BOOL isLastInteractiveMoveToLastSectionIndex;
+
+// We're in the middle of updating the objects.
+@property (nonatomic) BOOL isInObjectUpdateTransaction;
 
 /**
  When making object updates inside a batch update block, delete operations must use the section /before/ any moves take
